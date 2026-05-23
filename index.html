@@ -38,6 +38,7 @@
         scrollbar-color: darkgray black;
         word-wrap: break-word;
         overflow-y: scroll;
+        font-family: monospace;
     }
     input#inputEl {
         position: absolute;
@@ -200,7 +201,6 @@
     let comm = null
     connectBtn.onclick = async function () {
         if (comm == null) {
-            log("<Connecting device>")
             comm = await connectSerial(onread, ondisconnect, +baudRateEl.value, +dataBitsEl.value, flowControlEl.value, parityEl.value, +stopBitsEl.value)
 
             if (comm == null) log("<Error connecting to device. Likely caused by: No serial port selected, use of serial ports is not allowed for this webpage, or the serial port is busy (meaning another program may be connected to it already)>")
@@ -241,7 +241,6 @@
         }
     }
     clearBtn.onclick = function () {
-        log("<Clearing output>")
         outputEl.innerHTML = ""
     }
 
@@ -261,8 +260,6 @@
             if (sentText.length >= 2 && sentText[sentText.length - 2] == sentText[sentText.length - 1]) sentText[sentText.length - 1] = ""
             else sentText.push("")
             sentTextPos = sentText.length - 1
-
-            log("<Finished sending text>")
         } else if (ev.key == "ArrowUp" && !ev.shiftKey && !ev.ctrlKey) {
             if (sentTextPos > 0) {
                 ev.preventDefault()
@@ -303,7 +300,6 @@
     }
     function ondisconnect () {
         if (comm != null) {
-            log("<Disconnecting device>")
             usbVIdEl.innerText = usbPIdEl.innerText = btSvClIdEl.innerText = "<None>"
             usbVIdEl.style.color = usbPIdEl.style.color = btSvClIdEl.style.color = "darkgray"
 
