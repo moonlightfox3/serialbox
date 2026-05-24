@@ -312,8 +312,13 @@
         }
     }
 
+    let lastLogCR = false
     function log (text, info = true, newline = info) {
-        let el = document.createElement(info ? "i" : "span"); el.innerText = text.replaceAll("\t", "\\t")
+        if (lastLogCR && text.startsWith("\n")) text = text.substring(1)
+        lastLogCR = text.endsWith("\r")
+        let el = document.createElement(info ? "i" : "span")
+
+        el.innerText = text.replaceAll("\t", "\\t")
         outputEl.append(el)
         if (newline) outputEl.append(document.createElement("br"))
 
