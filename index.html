@@ -89,7 +89,7 @@
     span#usbVIdEl, span#usbPIdEl, span#btSvClIdEl {
         color: darkgray;
     }
-    input#breakEl {
+    input#signalEl {
         width: 50px;
         border: 1px dashed black;
     }
@@ -104,9 +104,8 @@
 <div id="settingsEl">
     <button id="connectBtn" autofocus>Connect</button>
     <span id="infoEl">USB: VendorId=<span id="usbVIdEl">&lt;None&gt;</span>, ProductId=<span id="usbPIdEl">&lt;None&gt;</span>. BT: ServiceClassId=<span id="btSvClIdEl">&lt;None&gt;</span></span>
-    | <button id="breakBtn" disabled>Send <input type="number" id="breakEl" value="250" disabled>ms break</button>
-    | <button id="clearBtn">Clear output</button>
-    <label for="autoscrollEl">Autoscroll:</label><input type="checkbox" id="autoscrollEl" checked>
+    <button id="clearBtn">Clear output</button>
+    | <button id="signalBtn" disabled>Send signals for <input type="number" id="signalEl" value="250" disabled>ms: <input type="checkbox" id="dtrSigEl" disabled><label for="dtrSigEl">DTR</label><input type="checkbox" id="rtsSigEl" disabled><label for="rtsSigEl">RTS</label><input type="checkbox" id="brkSigEl" disabled><label for="brkSigEl">BRK</label></button>
     <br>
 
     <label for="baudRateEl">Baud rate:</label><input type="number" id="baudRateEl" value="115200" placeholder="115200">
@@ -133,12 +132,15 @@
         <option value="\n">LF</option>
         <option value="\r\n">CRLF</option>
     </select>
+    <label for="autoscrollEl">Autoscroll:</label><input type="checkbox" id="autoscrollEl" checked>
     | SerialBox Console
 </div>
 <div id="outputEl"></div>
 <input id="inputEl" placeholder="Type a message here and click Enter to send..." disabled>
 
 <script>
+    // TODO: Read incoming signals?
+    
     async function connectSerial (onread = text => {}, ondisconnect = () => {}, baudRate = 115200, dataBits = 8, flowControl = "none", parity = "none", stopBits = 1) {
         let port = null
         try {
@@ -159,6 +161,10 @@
                 hasDisconnected: false,
             },
 
+            getInfo: function () {
+                let info = comm.data.port.getInfo()
+                return {usbVendorId: info.usbVendorId, usbProductId: info.usbProductId, btServiceClassId: info.bluetoothServiceClassId}
+            },
             disconnect: async function () {
                 if (!comm.data.hasDisconnected) {
                     comm.data.hasDisconnected = true
@@ -176,14 +182,21 @@
                 await comm.data.writer.write(arr)
             },
 
-            getInfo: function () {
-                let info = comm.data.port.getInfo()
-                return {usbVendorId: info.usbVendorId, usbProductId: info.usbProductId, btServiceClassId: info.bluetoothServiceClassId}
+            getSignals: async function () {
+                let obj = {}
+                let rawObj = await comm.data.port.getSignals()
+                if (rawObj.clearToSend != null) obj.cts = rawObj.clearToSend
+                if (rawObj.dataCarrierDetect != null) obj.dcd = rawObj.dataCarrierDetect
+                if (rawObj.dataSetReady != null) obj.dsr = rawObj.dataSetReady
+                if (rawObj.ringIndicator != null) obj.rin = rawObj.ringIndicator
+                return obj
             },
-            sendBreak: async function (ms) {
-                await comm.data.port.setSignals({break: true})
-                await new Promise(resolve => setTimeout(resolve, ms))
-                if (!comm.data.hasDisconnected) await comm.data.port.setSignals({break: false})
+            setSignals: async function (obj) {
+                let rawObj = {}
+                if (obj.dtr != null) rawObj.dataTerminalReady = obj.dtr
+                if (obj.rts != null) rawObj.requestToSend = obj.rts
+                if (obj.brk != null) rawObj.break = obj.brk
+                await comm.data.port.setSignals(rawObj)
             },
         }
         port.ondisconnect = async () => await comm.disconnect()
@@ -207,7 +220,7 @@
             else {
                 connectBtn.innerText = "Disconnect"
                 baudRateEl.disabled = dataBitsEl.disabled = flowControlEl.disabled = parityEl.disabled = stopBitsEl.disabled = true
-                inputEl.disabled = breakBtn.disabled = breakEl.disabled = false
+                inputEl.disabled = signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = false
 
                 let info = comm.getInfo()
                 usbVIdEl.innerText = `0x${info.usbVendorId?.toString(16)}` ?? "<None>"; usbVIdEl.style.color = info.usbVendorId == undefined ? "darkgray" : "lightgray"
@@ -224,20 +237,26 @@
         }
     }
 
-    breakBtn.onclick = async function () {
-        log(`<Sending ${+breakEl.value}ms break>`)
+    signalBtn.onclick = async function () {
+        let signalsName = []
+        if (dtrSigEl.checked) signalsName.push("DTR")
+        if (rtsSigEl.checked) signalsName.push("RTS")
+        if (brkSigEl.checked) signalsName.push("BRK")
+        log(`<Sending ${+signalEl.value}ms signal${signalsName.length != 1 ? "s" : ""}: ${signalsName.join(", ")}>`)
 
-        breakBtn.disabled = breakEl.disabled = true
-        await comm.sendBreak(+breakEl.value)
-        if (comm != null) breakBtn.disabled = breakEl.disabled = false
+        signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = true
+        await comm.setSignals({dtr: dtrSigEl.checked, rts: rtsSigEl.checked, brk: brkSigEl.checked})
+        await new Promise(resolve => setTimeout(resolve, +signalEl.value))
+        await comm.setSignals({dtr: false, rts: false, brk: false})
+        if (comm != null) signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = false
 
-        log("<Finished sending break>")
+        log(`<Finished sending signal${signalsName.length != 1 ? "s" : ""}>`)
     }
-    breakEl.onclick = ev => ev.stopPropagation()
-    breakEl.onkeydown = async function (ev) {
+    for (let child of signalBtn.children) child.onclick = ev => ev.stopPropagation()
+    signalEl.onkeydown = async function (ev) {
         if (ev.key == "Enter") {
-            breakEl.blur()
-            await breakBtn.click()
+            signalEl.blur()
+            await signalBtn.click()
         }
     }
     clearBtn.onclick = function () {
@@ -303,7 +322,7 @@
             usbVIdEl.innerText = usbPIdEl.innerText = btSvClIdEl.innerText = "<None>"
             usbVIdEl.style.color = usbPIdEl.style.color = btSvClIdEl.style.color = "darkgray"
 
-            inputEl.disabled = breakBtn.disabled = breakEl.disabled = true
+            inputEl.disabled = signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = true
             baudRateEl.disabled = dataBitsEl.disabled = flowControlEl.disabled = parityEl.disabled = stopBitsEl.disabled = false
             connectBtn.innerText = "Connect"
             comm = null
