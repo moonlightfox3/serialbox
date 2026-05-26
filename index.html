@@ -22,6 +22,7 @@
         border-bottom: 1px solid lightgray;
         background-color: black;
         color: lightgray;
+        scrollbar-color: darkgray black;
         overflow-y: scroll;
     }
     div#outputEl {
@@ -139,7 +140,7 @@
         <option value="\r\n">CRLF</option>
     </select>
     <label for="autoscrollEl">Autoscroll:</label><input type="checkbox" id="autoscrollEl" checked>
-    | SerialBox Console v2.6G <i><a href="https://github.com/moonlightfox3/serialbox" target="_blank">(GitHub repo here)</a></i>
+    | SerialBox Console v2.7G <i><a href="https://github.com/moonlightfox3/serialbox" target="_blank">(GitHub repo here)</a></i>
 </div>
 <div id="outputEl"></div>
 <input id="inputEl" placeholder="Type a message here and click Enter to send..." disabled>
@@ -227,9 +228,9 @@
                 inputEl.disabled = signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = readSignalBtn.disabled = false
 
                 let info = comm.getInfo()
-                usbVIdEl.innerText = `0x${info.usbVendorId?.toString(16)}` ?? "<None>"; usbVIdEl.style.color = info.usbVendorId == undefined ? "darkgray" : "lightgray"
-                usbPIdEl.innerText = `0x${info.usbProductId?.toString(16)}` ?? "<None>"; usbPIdEl.style.color = info.usbProductId == undefined ? "darkgray" : "lightgray"
-                btSvClIdEl.innerText = (typeof info.btServiceClassId == "number" ? `0x${info.btServiceClassId.toString(16)}` : info.btServiceClassId) ?? "<None>"; btSvClIdEl.style.color = info.btServiceClassId == undefined ? "darkgray" : "lightgray"
+                usbVIdEl.innerText = info.usbVendorId == null ? "<None>" : `0x${info.usbVendorId.toString(16)}`; usbVIdEl.style.color = info.usbVendorId == null ? "darkgray" : "lightgray"
+                usbPIdEl.innerText = info.usbProductId == null ? "<None>" : `0x${info.usbProductId.toString(16)}`; usbPIdEl.style.color = info.usbProductId == null ? "darkgray" : "lightgray"
+                btSvClIdEl.innerText = (typeof info.btServiceClassId == "number" ? `0x${info.btServiceClassId.toString(16)}` : info.btServiceClassId) ?? "<None>"; btSvClIdEl.style.color = info.btServiceClassId == null ? "darkgray" : "lightgray"
                 log("<Device connected>")
             }
         } else await comm.disconnect()
