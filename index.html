@@ -140,7 +140,7 @@
         <option value="\r\n">CRLF</option>
     </select>
     <label for="autoscrollEl">Autoscroll:</label><input type="checkbox" id="autoscrollEl" checked>
-    | SerialBox Console v2.7G <i><a href="https://github.com/moonlightfox3/serialbox" target="_blank">(GitHub repo here)</a></i>
+    | SerialBox Console v2.8G <i><a href="https://github.com/moonlightfox3/serialbox" target="_blank">(GitHub repo here)</a></i>
 </div>
 <div id="outputEl"></div>
 <input id="inputEl" placeholder="Type a message here and click Enter to send..." disabled>
@@ -148,12 +148,11 @@
 <script>
     async function connectSerial (onread = text => {}, ondisconnect = () => {}, baudRate = 115200, dataBits = 8, flowControl = "none", parity = "none", stopBits = 1) {
         let port = null
-        try {
-            port = await navigator.serial.requestPort()
-            await port.open({baudRate, bufferSize: 255, dataBits, flowControl, parity, stopBits})
-        } catch (er) {
-            return null
-        }
+        try { port = await navigator.serial.requestPort() }
+        catch (er) { return undefined }
+        try { await port.open({baudRate, bufferSize: 255, dataBits, flowControl, parity, stopBits}) }
+        catch (er) { return null }
+       
         let reader = port.readable.getReader()
         let writer = port.writable.getWriter()
 
@@ -221,7 +220,8 @@
         if (comm == null) {
             comm = await connectSerial(onread, ondisconnect, +baudRateEl.value, +dataBitsEl.value, flowControlEl.value, parityEl.value, +stopBitsEl.value)
 
-            if (comm == null) log("<Error connecting to device. Likely caused by: No serial port selected, use of serial ports is not allowed for this webpage, or the serial port is busy (meaning another program may be connected to it already)>")
+            if (comm === undefined) log("<Error connecting to device. No serial port was selected, or the use of serial ports is disabled for this webpage>")
+            else if (comm === null) log("<Error connecting to device. The serial port is busy, and already in use by another program>")
             else {
                 connectBtn.innerText = "Disconnect"
                 baudRateEl.disabled = dataBitsEl.disabled = flowControlEl.disabled = parityEl.disabled = stopBitsEl.disabled = true
