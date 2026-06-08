@@ -148,7 +148,7 @@
         <option value="\r\n" selected>CRLF</option>
     </select>
     <label for="autoscrollEl">Autoscroll:</label><input type="checkbox" id="autoscrollEl" checked>
-    | SerialBox Console v3.0 <i><a href="https://github.com/moonlightfox3/serialbox" target="_blank">(GitHub repo here)</a></i>
+    | SerialBox Console v3.1 <i><a href="https://github.com/moonlightfox3/serialbox" target="_blank">(GitHub repo here)</a></i>
     <hr>
 
     Arduino
@@ -160,7 +160,9 @@
     </select>
     | <button id="arduino_uploadBtn" disabled>Upload program |
         <label for="arduino_uploadResetEl">Reset board:</label><input type="checkbox" id="arduino_uploadResetEl" checked disabled>
-    </button><button id="arduino_downloadBtn" disabled>Download program</button>
+    </button><button id="arduino_downloadBtn" disabled>Download program |
+        <label for="arduino_downloadResetEl">Reset board:</label><input type="checkbox" id="arduino_downloadResetEl" checked disabled>
+    </button>
     <span id="arduino_progressEl">&lt;No tasks have been run&gt;</span>
 </div>
 <div id="outputEl"></div>
@@ -204,7 +206,8 @@
         try { await port.open({baudRate, bufferSize: 255, dataBits, flowControl, parity, stopBits}) }
         catch (er) { return null }
        
-        await port.setSignals({dataTerminalReady: false, requestToSend: false, break: false})
+        try { await port.setSignals({dataTerminalReady: false, requestToSend: false, break: false}) }
+        catch (er) {}
         let reader = port.readable.getReader()
         let writer = port.writable.getWriter()
 
@@ -293,7 +296,10 @@
 
             getSignals: async function () {
                 let obj = {}
-                let rawObj = await comm.data.port.getSignals()
+                let rawObj = {}
+                try { rawObj = await comm.data.port.getSignals() }
+                catch (er) { return null }
+
                 if (rawObj.clearToSend != null) obj.cts = rawObj.clearToSend
                 if (rawObj.dataCarrierDetect != null) obj.dcd = rawObj.dataCarrierDetect
                 if (rawObj.dataSetReady != null) obj.dsr = rawObj.dataSetReady
@@ -305,7 +311,10 @@
                 if (obj.dtr != null) rawObj.dataTerminalReady = obj.dtr
                 if (obj.rts != null) rawObj.requestToSend = obj.rts
                 if (obj.brk != null) rawObj.break = obj.brk
-                await comm.data.port.setSignals(rawObj)
+
+                try { await comm.data.port.setSignals(rawObj) }
+                catch (er) { return false }
+                return true
             },
         }
         port.ondisconnect = async () => await comm.disconnect()
@@ -350,7 +359,7 @@
                 connectBtn.innerText = "Disconnect"
                 connectBtn.disabled = false
                 inputEl.disabled = signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = readSignalBtn.disabled = arduino_resetBtn.disabled = false
-                if (arduino_allowArduinoFunctions) arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = false
+                if (arduino_allowArduinoFunctions) arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = false
 
                 let info = comm.getInfo()
                 usbVIdEl.innerText = info.usbVendorId == null ? "<None>" : `0x${info.usbVendorId.toString(16)}`; usbVIdEl.style.color = info.usbVendorId == null ? "darkgray" : "lightgray"
@@ -373,23 +382,29 @@
     }
     for (let child of signalBtn.children) child.onclick = ev => ev.stopPropagation()
     signalBtn.onclick = async function () {
-        let signalsName = []
-        if (dtrSigEl.checked) signalsName.push("DTR")
-        if (rtsSigEl.checked) signalsName.push("RTS")
-        if (brkSigEl.checked) signalsName.push("BRK")
-        log(`<Sending signal${signalsName.length != 1 ? "s" : ""}${+signalEl.value == 0 ? "" : ` for ${+signalEl.value}ms`}: ${signalsName.join(", ")}>`)
+        let signalNames = []
+        if (dtrSigEl.checked) signalNames.push("DTR")
+        if (rtsSigEl.checked) signalNames.push("RTS")
+        if (brkSigEl.checked) signalNames.push("BRK")
+        log(`<Sending signal${signalNames.length != 1 ? "s" : ""}${+signalEl.value == 0 ? "" : ` for ${+signalEl.value}ms`}: ${signalNames.join(", ")}>`)
 
         signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = arduino_resetBtn.disabled = true
-        arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = true
-        await comm.setSignals({dtr: dtrSigEl.checked, rts: rtsSigEl.checked, brk: brkSigEl.checked})
-        if (+signalEl.value != 0) await new Promise(resolve => setTimeout(resolve, +signalEl.value))
-        await comm.setSignals({dtr: false, rts: false, brk: false})
-        if (comm != null) {
-            signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = arduino_resetBtn.disabled = false
-            if (arduino_allowArduinoFunctions) arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = false
+        arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = true
+
+        let success = await comm.setSignals({dtr: dtrSigEl.checked, rts: rtsSigEl.checked, brk: brkSigEl.checked})
+        if (success) {
+            if (+signalEl.value != 0) await new Promise(resolve => setTimeout(resolve, +signalEl.value))
+            success = await comm.setSignals({dtr: false, rts: false, brk: false})
         }
 
-        if (+signalEl.value != 0) log(`<Finished sending signal${signalsName.length != 1 ? "s" : ""}>`)
+        if (comm != null) {
+            signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = arduino_resetBtn.disabled = false
+            if (arduino_allowArduinoFunctions) arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = false
+        }
+
+        if (success) {
+            if (+signalEl.value != 0) log(`<Finished sending signal${signalNames.length != 1 ? "s" : ""}>`)
+        } else log(`<Failed to send signal${signalNames.length != 1 ? "s" : ""}>`)
     }
     signalEl.onkeydown = async function (ev) {
         if (ev.key == "Enter") {
@@ -398,8 +413,18 @@
         }
     }
     readSignalBtn.onclick = async function () {
-        let signalNames = []
+        log("<Getting signals>")
+
         let signals = await comm.getSignals()
+        if (signals == null) {
+            readSignalEl.innerText = "<Error>"
+            readSignalEl.style.color = "darkgray"
+
+            log("<Failed to get signals>")
+            return
+        }
+
+        let signalNames = []
         if (signals.cts) signalNames.push("CTS")
         if (signals.dcd) signalNames.push("DCD")
         if (signals.dsr) signalNames.push("DSR")
@@ -478,7 +503,7 @@
             usbVIdEl.style.color = usbPIdEl.style.color = btSvClIdEl.style.color = "darkgray"
 
             inputEl.disabled = signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = readSignalBtn.disabled = arduino_resetBtn.disabled = true
-            arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = true
+            arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = true
             baudRateEl.disabled = dataBitsEl.disabled = parityEl.disabled = stopBitsEl.disabled = flowControlEl.disabled = false
             connectBtn.innerText = "Connect"
             comm = null
@@ -509,13 +534,15 @@
     arduino_resetBtn.onclick = async function () {
         log("<Resetting Arduino>")
 
-        await comm.setSignals({dtr: true, rts: true})
-        await comm.setSignals({dtr: false, rts: false})
+        let success = await comm.setSignals({dtr: true, rts: true})
+        if (success) success = await comm.setSignals({dtr: false, rts: false})
+
+        if (!success) log("<Failed to reset Arduino>")
     }
     let arduino_allowArduinoFunctions = false
     arduino_chipEl.onchange = function () {
         currentChip = arduino_chipEl.value
-        if (comm != null && !arduino_allowArduinoFunctions && !signalBtn.disabled) arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = false
+        if (comm != null && !arduino_allowArduinoFunctions && !signalBtn.disabled) arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = false
         arduino_allowArduinoFunctions = true
     }
 
@@ -630,7 +657,7 @@
         let numPages = buf.length / chipConfig[currentChip].memoryPageSize
 
         log(`<Starting Arduino${isBootloader ? " bootloader" : ""} upload of ${buf.length} byte${buf.length != 1 ? "s" : ""}>`)
-        arduino_chipEl.disabled = arduino_resetBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = inputEl.disabled = true
+        arduino_chipEl.disabled = arduino_resetBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = inputEl.disabled = true
         signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = true
         arduino_progressEl.style.color = "lightgray"
         runOnreadHandler = false
@@ -639,8 +666,8 @@
         let commRunResult = -1; commRun: for (let _commRun = 0; !_commRun; _commRun++) { // Allow exiting code at any point
             arduino_progressEl.innerText = "0%: Starting communication"
             if (arduino_uploadResetEl.checked) {
-                await comm.setSignals({dtr: true, rts: true})
-                await comm.setSignals({dtr: false, rts: false})
+                if (!(await comm.setSignals({dtr: true, rts: true}))) break commRun
+                if (!(await comm.setSignals({dtr: false, rts: false}))) break commRun
                 await new Promise(resolve => setTimeout(resolve, config.bootloaderStartDelay))
             }
 
@@ -792,17 +819,18 @@
         arduino_progressEl.innerText = comm == null ? "Warning: Interrupted by disconnect, upload may be corrupted" : ["100%: Success", "Error: Bad communication, please retry", "Error: Invalid chip signature, wrong board", "Error: Bad upload, please retry", "Error: Bad bootloader size, wrong file"][-commRunResult]
         arduino_chipEl.disabled = false
         if (comm != null) {
-            arduino_resetBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = inputEl.disabled = false
+            arduino_resetBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = inputEl.disabled = false
             signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = false
         }
         log(`<${comm != null && commRunResult == 0 ? "Finished": "Failed to finish"} Arduino${isBootloader ? " bootloader" : ""} upload>`)
     }
+    for (let child of arduino_downloadBtn.children) child.onclick = ev => ev.stopPropagation()
     arduino_downloadBtn.onclick = async function () {
         let buf = new Uint8Array(chipConfig[currentChip].memoryTotalSize)
         let numPages = buf.length / chipConfig[currentChip].memoryPageSize
 
         log(`<Starting Arduino download of ${buf.length} byte${buf.length != 1 ? "s" : ""}>`)
-        arduino_chipEl.disabled = arduino_resetBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = inputEl.disabled = true
+        arduino_chipEl.disabled = arduino_resetBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = inputEl.disabled = true
         signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = true
         arduino_progressEl.style.color = "lightgray"
         runOnreadHandler = false
@@ -810,9 +838,9 @@
         
         let commRunResult = -1; commRun: for (let _commRun = 0; !_commRun; _commRun++) { // Allow exiting code at any point
             arduino_progressEl.innerText = "0%: Starting communication"
-            if (arduino_uploadResetEl.checked) {
-                await comm.setSignals({dtr: true, rts: true})
-                await comm.setSignals({dtr: false, rts: false})
+            if (arduino_downloadResetEl.checked) {
+                if (!(await comm.setSignals({dtr: true, rts: true}))) break commRun
+                if (!(await comm.setSignals({dtr: false, rts: false}))) break commRun
                 await new Promise(resolve => setTimeout(resolve, config.bootloaderStartDelay))
             }
 
@@ -872,7 +900,7 @@
         arduino_progressEl.innerText = comm == null ? "Warning: Interrupted by disconnect, download canceled" : ["100%: Success", "Error: Bad communication, please retry", "Error: Invalid chip signature, wrong board"][-commRunResult]
         arduino_chipEl.disabled = false
         if (comm != null) {
-            arduino_resetBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = inputEl.disabled = false
+            arduino_resetBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = inputEl.disabled = false
             signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = false
         }
         log(`<${comm != null && commRunResult == 0 ? "Finished": "Failed to finish"} Arduino download>`)
@@ -891,26 +919,35 @@
         runOnreadHandler = false
         comm.emptyReadBuffer()
 
-        await comm.setSignals({dtr: true, rts: true})
-        await comm.setSignals({dtr: false, rts: false})
-        await new Promise(resolve => setTimeout(resolve, config.bootloaderStartDelay))
+        let success = await comm.setSignals({dtr: true, rts: true})
+        if (success) {
+            success = await comm.setSignals({dtr: false, rts: false})
+            if (success) await new Promise(resolve => setTimeout(resolve, config.bootloaderStartDelay))
+        }
+        if (!success) {
+            log(`<(Debug) Failed to start Arduino bootloader communication>`)
+            debug_runBootComm = false
+        }
 
         async function runBootCommand () {
-            if (debug_bootCommands.length > 0) {
-                try { await (debug_bootCommands.shift())() }
-                catch (er) { console.debug("Error while sending bootloader command to Arduino:", er) }
-            } else {
-                // Sending "Z" doesn't do anything, but bootloaders allow it (and it prevents timing out)
-                await comm.write("Z ")
-                let code1 = await comm.readCode(config.readTimeout)
-                if (code1 == 0x14) {
-                    if (await comm.readCode(config.readTimeout) != 0x10) console.debug("Invalid response while sending heartbeat to Arduino bootloader")
-                } else if (code1 == 0x12) {}
-                else console.debug("Invalid response while sending heartbeat to Arduino bootloader")
-            }
+            if (debug_runBootComm) {
+                if (debug_bootCommands.length > 0) {
+                    try { await (debug_bootCommands.shift())() }
+                    catch (er) {
+                        log("<(Debug) Error while sending bootloader command to Arduino>")
+                        console.error(er)
+                    }
+                } else {
+                    await comm.write("Z ") // Sending "Z" doesn't do anything, but at least some bootloaders allow it (and it prevents timing out)
+                    let code1 = await comm.readCode(config.readTimeout)
+                    if (code1 == 0x14) {
+                        if (await comm.readCode(config.readTimeout) != 0x10) log("<(Debug) Invalid response while sending heartbeat to Arduino bootloader>")
+                    } else if (code1 == 0x12) {}
+                    else log("<(Debug) Invalid response while sending heartbeat to Arduino bootloader>")
+                }
 
-            if (debug_runBootComm) setTimeout(runBootCommand, 250)
-            else {
+                setTimeout(runBootCommand, 250)
+            } else {
                 log("<(Debug) Stopping Arduino bootloader communication>")
                 comm.emptyReadBuffer()
                 runOnreadHandler = true
