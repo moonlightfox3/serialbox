@@ -16,7 +16,7 @@
         left: 0;
         top: 0;
         width: 100%;
-        height: 50px;
+        height: 95px;
 
         border: none;
         border-bottom: 1px solid lightgray;
@@ -28,9 +28,9 @@
     div#outputEl {
         position: absolute;
         left: 0;
-        top: 51px;
+        top: 96px;
         width: 100%;
-        height: calc(100% - 74px);
+        height: calc(100% - 119px);
         margin: 0;
         padding: 0;
 
@@ -61,7 +61,7 @@
         color: black;
     }
 
-    button, input, select {
+    button, input:not(#inputEl), select {
         background-color: lightgray;
         border-radius: 5px;
     }
@@ -81,6 +81,9 @@
         color: lightgray;
         text-decoration: none;
     }
+    hr {
+        border-color: darkgray;
+    }
 
     span#infoEl {
         border-radius: 5px;
@@ -92,7 +95,7 @@
     div#outputEl *, span#infoEl, span#usbVIdEl, span#usbPIdEl, span#btSvClIdEl {
         user-select: text;
     }
-    span#usbVIdEl, span#usbPIdEl, span#btSvClIdEl, span#readSignalEl {
+    span#usbVIdEl, span#usbPIdEl, span#btSvClIdEl, span#readSignalEl, span#arduino_progressEl {
         color: darkgray;
     }
     input#signalEl {
@@ -111,7 +114,12 @@
     <button id="connectBtn" autofocus>Connect</button>
     <span id="infoEl">USB: VendorId=<span id="usbVIdEl">&lt;None&gt;</span>, ProductId=<span id="usbPIdEl">&lt;None&gt;</span>. BT: ServiceClassId=<span id="btSvClIdEl">&lt;None&gt;</span></span>
     <button id="clearBtn">Clear output</button>
-    | <button id="signalBtn" disabled>Send signals for <input type="number" id="signalEl" value="250" disabled>ms: <input type="checkbox" id="dtrSigEl" disabled><label for="dtrSigEl">DTR</label><input type="checkbox" id="rtsSigEl" disabled><label for="rtsSigEl">RTS</label><input type="checkbox" id="brkSigEl" disabled><label for="brkSigEl">BRK</label></button>
+    | <button id="signalBtn" disabled>Send signals for
+        <input type="number" id="signalEl" value="0" disabled>ms |
+        <label for="dtrSigEl">DTR:</label><input type="checkbox" id="dtrSigEl" disabled>
+        <label for="rtsSigEl">RTS:</label><input type="checkbox" id="rtsSigEl" disabled>
+        <label for="brkSigEl">BRK:</label><input type="checkbox" id="brkSigEl" disabled>
+    </button>
     Signals (<button id="readSignalBtn" disabled>Read</button>): <span id="readSignalEl">&lt;None&gt;</span>
     <br>
 
@@ -119,10 +127,6 @@
     <label for="dataBitsEl">Data bits:</label><select id="dataBitsEl">
         <option value="7">7</option>
         <option value="8" selected>8</option>
-    </select>
-    <label for="flowControlEl">Flow control:</label><select id="flowControlEl">
-        <option value="none" selected>None</option>
-        <option value="hardware">Hardware</option>
     </select>
     <label for="parityEl">Parity:</label><select id="parityEl">
         <option value="none" selected>None</option>
@@ -133,6 +137,10 @@
         <option value="1" selected>1</option>
         <option value="2">2</option>
     </select>
+    <label for="flowControlEl">Flow control:</label><select id="flowControlEl">
+        <option value="none" selected>None</option>
+        <option value="hardware">Hardware</option>
+    </select>
     | <label for="lineEndingEl">Line ending:</label><select id="lineEndingEl">
         <option value="">None</option>
         <option value="\r">CR</option>
@@ -140,19 +148,63 @@
         <option value="\r\n" selected>CRLF</option>
     </select>
     <label for="autoscrollEl">Autoscroll:</label><input type="checkbox" id="autoscrollEl" checked>
-    | SerialBox Console v2.9G <i><a href="https://github.com/moonlightfox3/serialbox" target="_blank">(GitHub repo here)</a></i>
+    | SerialBox Console v3.0 <i><a href="https://github.com/moonlightfox3/serialbox" target="_blank">(GitHub repo here)</a></i>
+    <hr>
+
+    Arduino
+    | <button id="arduino_resetBtn" disabled>Reset</button>
+    <label for="arduino_chipEl">Board:</label><select id="arduino_chipEl">
+        <option value="" selected disabled>&lt;Choose&gt;</option>
+        <option value="uno">UNO</option>
+        <option value="nano">Nano</option>
+    </select>
+    | <button id="arduino_uploadBtn" disabled>Upload program |
+        <label for="arduino_uploadResetEl">Reset board:</label><input type="checkbox" id="arduino_uploadResetEl" checked disabled>
+    </button><button id="arduino_downloadBtn" disabled>Download program</button>
+    <span id="arduino_progressEl">&lt;No tasks have been run&gt;</span>
 </div>
 <div id="outputEl"></div>
 <input id="inputEl" placeholder="Type a message here and click Enter to send..." disabled>
 
 <script>
-    async function connectSerial (onread = text => {}, ondisconnect = () => {}, baudRate = 115200, dataBits = 8, flowControl = "none", parity = "none", stopBits = 1) {
+    // These chip config options are important and should be correct!
+    let currentChip = "" // Automatically chosen from the list of the keys of the chipConfig object.
+    let chipConfig = { // Lock and fuse bytes are currently hardcoded. Look at those, and see if any changes need to be made, before adding more boards here.
+        uno: { // Arduino UNO with ATmega328P
+            memoryTotalSize : 0x8000,
+            memoryPageSize  : 0x80,
+            bootloaderSize  : 0x200,
+            signatureHigh   : 0x1E,
+            signatureMiddle : 0x95,
+            signatureLow    : 0x0F,
+        },
+        nano: { // Arduino Nano with ATmega328P
+            memoryTotalSize : 0x8000,
+            memoryPageSize  : 0x80,
+            bootloaderSize  : 0x800,
+            signatureHigh   : 0x1E,
+            signatureMiddle : 0x95,
+            signatureLow    : 0x0F,
+        },
+    }
+
+    // More config options. These can be customized to your liking.
+    let config = {
+        verifyUploads        : false, // Verify uploaded code after uploading, can approximately double upload time. Default disabled
+        verifyBootUploads    : true,  // Verify uploaded bootloader, locks, and fuses. Recommended to be enabled
+        readTimeout          : 1500,  // Milliseconds to wait before one serial read times out. Default 1500
+        bootloaderStartDelay : 100,   // Milliseconds to wait after resetting, when using the bootloader. Default 100
+    }
+
+
+    async function connectSerial (onread = () => {}, ondisconnect = () => {}, baudRate = 115200, dataBits = 8, parity = "none", stopBits = 1, flowControl = "none") {
         let port = null
         try { port = await navigator.serial.requestPort() }
         catch (er) { return undefined }
         try { await port.open({baudRate, bufferSize: 255, dataBits, flowControl, parity, stopBits}) }
         catch (er) { return null }
        
+        await port.setSignals({dataTerminalReady: false, requestToSend: false, break: false})
         let reader = port.readable.getReader()
         let writer = port.writable.getWriter()
 
@@ -160,8 +212,7 @@
             data: {
                 port,
                 reader, writer,
-                readDecoder: new TextDecoder(), writeEncoder: new TextEncoder(),
-                readListenerLoop: null,
+                readBuffer: [],
                 hasDisconnected: false,
             },
 
@@ -173,7 +224,8 @@
                 if (!comm.data.hasDisconnected) {
                     comm.data.hasDisconnected = true
 
-                    comm.data.reader.cancel()
+                    try { await comm.data.reader.cancel() }
+                    catch (er) {}
                     comm.data.reader.releaseLock()
                     comm.data.writer.releaseLock()
 
@@ -181,9 +233,62 @@
                     ondisconnect()
                 }
             },
-            write: async function (text) {
-                let arr = comm.data.writeEncoder.encode(`${text}`)
-                await comm.data.writer.write(arr)
+
+            readCode: async function (timeout = -1) {
+                return await new Promise(function (resolve) {
+                    let running = true
+                    if (timeout != -1) setTimeout(() => running = false, timeout)
+                    function check () {
+                        if (running) {
+                            if (comm.data.readBuffer.length > 0) resolve(comm.data.readBuffer.shift())
+                            else setTimeout(() => check())
+                        } else resolve(null)
+                    }
+                    check()
+                })
+            },
+            readMul: async function (count, timeout = -1) {
+                let arr = []
+                for (let i = 0; i < count; i++) {
+                    let code = await comm.readCode(timeout)
+                    if (code == null) return null
+                    else arr.push(code)
+                }
+                return arr
+            },
+            readStr: async function (length, timeout = -1) {
+                let str = ""
+                for (let i = 0; i < length; i++) {
+                    let code = await comm.readCode(timeout)
+                    if (code == null) return null
+                    else str += String.fromCharCode(code)
+                }
+                return str
+            },
+            emptyReadBuffer: function () {
+                comm.data.readBuffer = []
+            },
+            writeCode: async function (code) {
+                let arr = new Uint8Array([code])
+                try { await comm.data.writer.write(arr) }
+                catch (er) {}
+            },
+            writeMul: async function (codes) {
+                for (let code of codes) await comm.writeCode(code)
+            },
+            writeStr: async function (str) {
+                for (let char of str) await comm.writeCode(char.charCodeAt(0))
+            },
+            write: async function (data) {
+                if (typeof data == "object") {
+                    let codes = []
+                    for (let piece of data) {
+                        if (typeof piece == "number") codes.push(piece)
+                        else if (typeof piece == "string") codes.push(...piece.split("").map(val => val.charCodeAt(0)))
+                    }
+                    await comm.writeMul(codes)
+                } else if (typeof data == "number") await comm.writeCode(data)
+                else if (typeof data == "string") await comm.writeStr(data)
             },
 
             getSignals: async function () {
@@ -205,32 +310,53 @@
         }
         port.ondisconnect = async () => await comm.disconnect()
         
-        comm.data.readListenerLoop = (async function () {
+        setTimeout(async function () {
             while (!comm.data.hasDisconnected) {
-                let {value, done} = await comm.data.reader.read()
-                if (!done) onread(comm.data.readDecoder.decode(value))
-                else break
+                let data = null
+                try { data = await comm.data.reader.read() }
+                catch (er) { break }
+                if (!data.done) {
+                    comm.data.readBuffer.push(...data.value)
+                    for (let i = 0; i < data.value.length; i++) onread()
+                } else {
+                    if (!comm.data.hasDisconnected) alert("The browser you are currently using may be partially incompatible with this webpage. Sorry.\n\nKnown issue: Reading text from some devices, such as the device currently connected.\n\nNot all browsers have been tested, but Chrome should work (although this is not an advertisement for it).")
+                    break
+                }
             }
-        })()
+        })
         return comm
     }
+
 
     let comm = null
     connectBtn.onclick = async function () {
         if (comm == null) {
-            comm = await connectSerial(onread, ondisconnect, +baudRateEl.value, +dataBitsEl.value, flowControlEl.value, parityEl.value, +stopBitsEl.value)
+            connectBtn.disabled = true
+            connectBtn.innerText = "Connecting..."
+            baudRateEl.disabled = dataBitsEl.disabled = parityEl.disabled = stopBitsEl.disabled = flowControlEl.disabled = true
+            comm = await connectSerial(() => onread(), () => ondisconnect(), +baudRateEl.value, +dataBitsEl.value, parityEl.value, +stopBitsEl.value, flowControlEl.value)
 
-            if (comm === undefined) log("<Error connecting to device. No serial port was selected, or the use of serial ports is disabled for this webpage>")
-            else if (comm === null) log("<Error connecting to device. The serial port is busy, and already in use by another program>")
-            else {
+            if (comm === undefined) {
+                log("<Error connecting to device. No serial port was selected, or the use of serial ports is disabled for this webpage>")
+                baudRateEl.disabled = dataBitsEl.disabled = parityEl.disabled = stopBitsEl.disabled = flowControlEl.disabled = false
+                connectBtn.innerText = "Connect"
+                connectBtn.disabled = false
+            } else if (comm === null) {
+                log("<Error connecting to device. The serial port is busy, and already in use by another program>")
+                baudRateEl.disabled = dataBitsEl.disabled = parityEl.disabled = stopBitsEl.disabled = flowControlEl.disabled = false
+                connectBtn.innerText = "Connect"
+                connectBtn.disabled = false
+            } else {
                 connectBtn.innerText = "Disconnect"
-                baudRateEl.disabled = dataBitsEl.disabled = flowControlEl.disabled = parityEl.disabled = stopBitsEl.disabled = true
-                inputEl.disabled = signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = readSignalBtn.disabled = false
+                connectBtn.disabled = false
+                inputEl.disabled = signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = readSignalBtn.disabled = arduino_resetBtn.disabled = false
+                if (arduino_allowArduinoFunctions) arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = false
 
                 let info = comm.getInfo()
                 usbVIdEl.innerText = info.usbVendorId == null ? "<None>" : `0x${info.usbVendorId.toString(16)}`; usbVIdEl.style.color = info.usbVendorId == null ? "darkgray" : "lightgray"
                 usbPIdEl.innerText = info.usbProductId == null ? "<None>" : `0x${info.usbProductId.toString(16)}`; usbPIdEl.style.color = info.usbProductId == null ? "darkgray" : "lightgray"
                 btSvClIdEl.innerText = (typeof info.btServiceClassId == "number" ? `0x${info.btServiceClassId.toString(16)}` : info.btServiceClassId) ?? "<None>"; btSvClIdEl.style.color = info.btServiceClassId == null ? "darkgray" : "lightgray"
+                
                 log("<Device connected>")
             }
         } else await comm.disconnect()
@@ -242,22 +368,29 @@
         }
     }
 
+    clearBtn.onclick = function () {
+        outputEl.innerHTML = ""
+    }
+    for (let child of signalBtn.children) child.onclick = ev => ev.stopPropagation()
     signalBtn.onclick = async function () {
         let signalsName = []
         if (dtrSigEl.checked) signalsName.push("DTR")
         if (rtsSigEl.checked) signalsName.push("RTS")
         if (brkSigEl.checked) signalsName.push("BRK")
-        log(`<Sending ${+signalEl.value}ms signal${signalsName.length != 1 ? "s" : ""}: ${signalsName.join(", ")}>`)
+        log(`<Sending signal${signalsName.length != 1 ? "s" : ""}${+signalEl.value == 0 ? "" : ` for ${+signalEl.value}ms`}: ${signalsName.join(", ")}>`)
 
-        signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = true
+        signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = arduino_resetBtn.disabled = true
+        arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = true
         await comm.setSignals({dtr: dtrSigEl.checked, rts: rtsSigEl.checked, brk: brkSigEl.checked})
-        await new Promise(resolve => setTimeout(resolve, +signalEl.value))
+        if (+signalEl.value != 0) await new Promise(resolve => setTimeout(resolve, +signalEl.value))
         await comm.setSignals({dtr: false, rts: false, brk: false})
-        if (comm != null) signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = false
+        if (comm != null) {
+            signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = arduino_resetBtn.disabled = false
+            if (arduino_allowArduinoFunctions) arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = false
+        }
 
-        log(`<Finished sending signal${signalsName.length != 1 ? "s" : ""}>`)
+        if (+signalEl.value != 0) log(`<Finished sending signal${signalsName.length != 1 ? "s" : ""}>`)
     }
-    for (let child of signalBtn.children) child.onclick = ev => ev.stopPropagation()
     signalEl.onkeydown = async function (ev) {
         if (ev.key == "Enter") {
             signalEl.blur()
@@ -275,8 +408,8 @@
         readSignalEl.innerText = signalNames.length == 0 ? "<None>" : signalNames.join(", ")
         readSignalEl.style.color = signalNames.length == 0 ? "darkgray" : "lightgray"
     }
-    clearBtn.onclick = function () {
-        outputEl.innerHTML = ""
+    baudRateEl.onkeydown = function (ev) {
+        if (ev.key == "Enter") baudRateEl.blur()
     }
 
     let sentText = [""]
@@ -330,16 +463,23 @@
         }
     }
 
-    function onread (text) {
-        log(text, false)
+    let runOnreadHandler = true
+    async function onread () {
+        if (!runOnreadHandler) return
+
+        let code = await comm.readCode(config.readTimeout)
+        if ((code >= 0x20 && code <= 0x7E) || (code == 0x0D || code == 0x0A)) log(String.fromCharCode(code), false) // Standard printable ASCII characters, and newline characters
+        else if (code == 0x09) log(`\\\\tab`, true, false) // Tabs
+        else log(`\\x${code.toString(16).padStart(2, "0").toUpperCase()}`, true, false) // Other characters
     }
     function ondisconnect () {
         if (comm != null) {
             usbVIdEl.innerText = usbPIdEl.innerText = btSvClIdEl.innerText = "<None>"
             usbVIdEl.style.color = usbPIdEl.style.color = btSvClIdEl.style.color = "darkgray"
 
-            inputEl.disabled = signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = readSignalBtn.disabled = true
-            baudRateEl.disabled = dataBitsEl.disabled = flowControlEl.disabled = parityEl.disabled = stopBitsEl.disabled = false
+            inputEl.disabled = signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = readSignalBtn.disabled = arduino_resetBtn.disabled = true
+            arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = true
+            baudRateEl.disabled = dataBitsEl.disabled = parityEl.disabled = stopBitsEl.disabled = flowControlEl.disabled = false
             connectBtn.innerText = "Connect"
             comm = null
 
@@ -348,15 +488,451 @@
     }
 
     let lastLogCR = false
+    let lastNotInfoLog = null
     function log (text, info = true, newline = info) {
+        if (text == null) return
+
         if (lastLogCR && text.startsWith("\n")) text = text.substring(1)
         lastLogCR = text.endsWith("\r")
-        let el = document.createElement(info ? "i" : "span")
 
-        el.innerText = text.replaceAll("\t", "\\t")
+        let el = lastNotInfoLog != null && !info ? lastNotInfoLog : document.createElement(info ? "i" : "span")
+        if (!info) lastNotInfoLog = el
+        else lastNotInfoLog = null
+
+        el.innerText += text.replaceAll("\t", "\\t").replaceAll(" ", "\u00a0")
         outputEl.append(el)
         if (newline) outputEl.append(document.createElement("br"))
 
         if (autoscrollEl.checked) outputEl.scrollTop = outputEl.scrollHeight
+    }
+
+    arduino_resetBtn.onclick = async function () {
+        log("<Resetting Arduino>")
+
+        await comm.setSignals({dtr: true, rts: true})
+        await comm.setSignals({dtr: false, rts: false})
+    }
+    let arduino_allowArduinoFunctions = false
+    arduino_chipEl.onchange = function () {
+        currentChip = arduino_chipEl.value
+        if (comm != null && !arduino_allowArduinoFunctions && !signalBtn.disabled) arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = false
+        arduino_allowArduinoFunctions = true
+    }
+
+    async function arduino_getAndParseHexFile () {
+        let picker = document.createElement("input")
+        picker.type = "file"
+        picker.accept = ".hex"
+        picker.click()
+        let file = await new Promise(function (resolve) {
+            picker.onchange = () => resolve(picker.files[0])
+            picker.oncancel = () => resolve(null)
+        })
+        if (file == null) {
+            arduino_progressEl.innerText = "Error: No file selected"
+            return {}
+        }
+        if (!file.name.endsWith(".hex")) {
+            arduino_progressEl.innerText = "Error: File is not a .hex file"
+            return {}
+        }
+
+        let valid = true
+        let hex = (await file.text()).replaceAll("\r", "").replaceAll("\n", "").split(":").slice(1)
+        let entries = []
+        let startAddress = null // Bootloader start address, should only be present in bootloader files
+        for (let line of hex) {
+            let byteCount = parseInt(line.substring(0, 2), 16)
+            let addressRaw = line.substring(2, 6)
+            let addressVal = []; for (let i = 0; i < 4; i += 2) addressVal.push(parseInt(addressRaw.substring(i, i + 2), 16))
+            let address = ((addressVal[0] << 8) + addressVal[1]) // Big-endian
+            let type = parseInt(line.substring(6, 8), 16)
+            let dataRaw = line.substring(8, 8 + (byteCount * 2))
+            let data = []; for (let i = 0; i < dataRaw.length; i += 2) data.push(parseInt(dataRaw.substring(i, i + 2), 16))
+            let checksum = parseInt(line.substring(8 + (byteCount * 2), 8 + (byteCount * 2) + 2), 16)
+
+            if (
+                (byteCount + addressVal.reduce((acc, val) => acc + val, 0) + type + data.reduce((acc, val) => acc + val, 0) + checksum) & 0xFF != 0
+                || line.substring(8 + (byteCount * 2) + 2) != ""
+                || (type != 0 && type != 1 && type != 3)
+                || (type == 1 && (byteCount != 0 || address != 0))
+                || (type == 3 && (byteCount != 4 || address != 0 || data[0] != 0 || data[1] != 0))
+            ) {
+                valid = false
+                break
+            }
+
+            if (type == 0) entries.push({address, data})
+            else if (type == 1) break
+            else if (type == 3) startAddress = (data[2] << 8) + data[3]
+        }
+        if (!valid) {
+            arduino_progressEl.innerText = "Error: Invalid .hex file"
+            return {}
+        }
+
+        let buf = []
+        for (let entry of entries) {
+            for (let i = 0; i < entry.data.length; i++) buf[entry.address + i] = entry.data[i]
+        }
+        for (let i = 0; i < buf.length; i++) { // Empty values can maybe sometimes exist due to address jumps
+            if (buf[i] == undefined) buf[i] = 0xFF
+        }
+        let numPads = chipConfig[currentChip].memoryPageSize - (buf.length % chipConfig[currentChip].memoryPageSize) // Make sure the data is page-aligned
+        if (numPads < chipConfig[currentChip].memoryPageSize) {
+            for (let i = 0; i < numPads; i++) buf.push(0xFF)
+        }
+        
+        let bootloaderSize = startAddress == null ? null : (chipConfig[currentChip].memoryTotalSize - startAddress)
+        return {
+            buf: new Uint8Array(buf),
+            startAddress,
+            bootloaderSize,
+        }
+    }
+    async function arduino_makeAndSaveHexFile (buf) {
+        let text = ""
+        for (let i = 0; i < buf.length; i += 0x20) {
+            let byteCount = Math.min(buf.length - i, 0x20)
+            let byteCountRaw = byteCount.toString(16).padStart(2, "0").toUpperCase()
+            let address = ((i & 0xFF00) >> 8) + (i & 0xFF)
+            let addressRaw = i.toString(16).padStart(4, "0").toUpperCase() // Big-endian
+            let type = 0
+            let typeRaw = type.toString(16).padStart(2, "0").toUpperCase()
+            let data = [...buf.slice(i, i + 0x20)]
+            let dataRaw = data.map(val => val.toString(16).padStart(2, "0").toUpperCase()).join("")
+            let checksumRaw = ((0x100 - ((byteCount + address + type + data.reduce((acc, val) => acc + val, 0)) & 0xFF)) & 0xFF).toString(16).padStart(2, "0").toUpperCase()
+
+            text += `:${byteCountRaw}${addressRaw}${typeRaw}${dataRaw}${checksumRaw}\n`
+        }
+        text += `:00000001FF\n`
+
+        let picker = document.createElement("a")
+        picker.download = "code.hex"
+        picker.href = `data:text/plain;base64,${btoa(text)}`
+        picker.click()
+    }
+
+    for (let child of arduino_uploadBtn.children) child.onclick = ev => ev.stopPropagation()
+    arduino_uploadBtn.onclick = async function () {
+        let {buf, startAddress, bootloaderSize} = await arduino_getAndParseHexFile()
+        if (buf == undefined) return
+        let isBootloader = startAddress != null && bootloaderSize != null
+        let maxSize = chipConfig[currentChip].memoryTotalSize - chipConfig[currentChip].bootloaderSize
+        if (buf.length > maxSize && !isBootloader) {
+            arduino_progressEl.innerText = `Error: File too big! (${buf.length} byte${buf.length != 1 ? "s" : ""} > ${maxSize} byte${maxSize != 1 ? "s" : ""})`
+            return
+        }
+        if (buf.length != chipConfig[currentChip].memoryTotalSize && isBootloader) {
+            arduino_progressEl.innerText = `Error: Bootloader file is the wrong size! (${buf.length} byte${buf.length != 1 ? "s" : ""} != ${chipConfig[currentChip].memoryTotalSize} byte${chipConfig[currentChip].memoryTotalSize != 1 ? "s" : ""})`
+            return
+        }
+        let numPages = buf.length / chipConfig[currentChip].memoryPageSize
+
+        log(`<Starting Arduino${isBootloader ? " bootloader" : ""} upload of ${buf.length} byte${buf.length != 1 ? "s" : ""}>`)
+        arduino_chipEl.disabled = arduino_resetBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = inputEl.disabled = true
+        signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = true
+        arduino_progressEl.style.color = "lightgray"
+        runOnreadHandler = false
+        comm.emptyReadBuffer()
+        
+        let commRunResult = -1; commRun: for (let _commRun = 0; !_commRun; _commRun++) { // Allow exiting code at any point
+            arduino_progressEl.innerText = "0%: Starting communication"
+            if (arduino_uploadResetEl.checked) {
+                await comm.setSignals({dtr: true, rts: true})
+                await comm.setSignals({dtr: false, rts: false})
+                await new Promise(resolve => setTimeout(resolve, config.bootloaderStartDelay))
+            }
+
+            arduino_progressEl.innerText = "2%: Getting chip signature"
+            await comm.write("0 ")
+            if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+            if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+            await comm.write(["B",
+                ...((new Array(12)).fill(0x00)),
+                (chipConfig[currentChip].memoryPageSize & 0xFF00) >> 8,
+                chipConfig[currentChip].memoryPageSize & 0xFF,
+                ...((new Array(6)).fill(0x00)),
+            " "]) // ArduinoISP doesn't care about (pretty much) any of these options except the page size (because the EEPROM is not being programmed here)
+            if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+            if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+            await comm.write("P ")
+            if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+            if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+            await comm.write("u ")
+            if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+            let [sigHigh, sigMiddle, sigLow] = (await comm.readMul(3, config.readTimeout)) ?? [null, null, null]
+            if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+            if (sigHigh != chipConfig[currentChip].signatureHigh || sigMiddle != chipConfig[currentChip].signatureMiddle || sigLow != chipConfig[currentChip].signatureLow)
+                { commRunResult = -2; break commRun }
+            
+            if (isBootloader) {
+                await comm.write(["V", 0xAC, 0x80, 0x00, 0x00, " "]) // Chip erase
+                if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                if (await comm.readCode(config.readTimeout) != 0x00) break commRun
+                if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+                // Can't really verify a chip erase here. At least, it's not worth it
+                
+                await comm.write(["V", 0xAC, 0xE0, 0x00, 0xFF, " "]) // Set lock
+                if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                if (await comm.readCode(config.readTimeout) != 0x00) break commRun
+                if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+                if (config.verifyBootUploads) {
+                    await comm.write(["V", 0x58, 0x00, 0x00, 0x00, " "]) // Read lock
+                    if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                    if (await comm.readCode(config.readTimeout) != 0xFF) break commRun
+                    if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+                }
+                
+                await comm.write(["V", 0xAC, 0xA4, 0x00, 0xFD, " "]) // Set extended fuse
+                if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                if (await comm.readCode(config.readTimeout) != 0x00) break commRun
+                if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+                if (config.verifyBootUploads) {
+                    await comm.write(["V", 0x50, 0x08, 0x00, 0x00, " "]) // Read extended fuse
+                    if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                    if (await comm.readCode(config.readTimeout) != 0xFD) break commRun
+                    if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+                }
+                
+                if (bootloaderSize != 0x200 && bootloaderSize != 0x400 && bootloaderSize != 0x800 && bootloaderSize != 0x1000)
+                    { commRunResult = -4; break commRun }
+                let bootsz = (bootloaderSize == 0x200 || bootloaderSize == 0x400 ? 0b00000100 : 0b0) + (bootloaderSize == 0x200 || bootloaderSize == 0x800 ? 0b00000010 : 0b0)
+                await comm.write(["V", 0xAC, 0xA8, 0x00, 0xD8 + bootsz, " "]) // Set high fuse
+                if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                if (await comm.readCode(config.readTimeout) != 0x00) break commRun
+                if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+                if (config.verifyBootUploads) {
+                    await comm.write(["V", 0x58, 0x08, 0x00, 0x00, " "]) // Read high fuse
+                    if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                    if (await comm.readCode(config.readTimeout) != 0xD8 + bootsz) break commRun
+                    if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+                }
+                
+                await comm.write(["V", 0xAC, 0xA0, 0x00, 0xFF, " "]) // Set low fuse
+                if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                if (await comm.readCode(config.readTimeout) != 0x00) break commRun
+                if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+                if (config.verifyBootUploads) {
+                    await comm.write(["V", 0x50, 0x00, 0x00, 0x00, " "]) // Read low fuse
+                    if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                    if (await comm.readCode(config.readTimeout) != 0xFF) break commRun
+                    if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+                }
+            }
+
+            for (let addr = isBootloader ? startAddress : 0x0; addr < buf.length; addr += chipConfig[currentChip].memoryPageSize) {
+                let page = addr / chipConfig[currentChip].memoryPageSize
+                arduino_progressEl.innerText = `${Math.floor(4 + ((page / numPages) * (config.verifyUploads ? 47 : 94)))}%: Programming page ${page + 1} of ${numPages}`
+
+                // Convert byte address to word address
+                let addrLow = (addr / 2) & 0xFF
+                let addrHigh = ((addr / 2) & 0xFF00) >> 8
+                let sizeLow = chipConfig[currentChip].memoryPageSize & 0xFF
+                let sizeHigh = (chipConfig[currentChip].memoryPageSize & 0xFF00) >> 8
+
+                await comm.write(["U", addrLow, addrHigh, " "])
+                if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+                
+                await comm.write(["d", sizeHigh, sizeLow, "F", ...buf.slice(addr, addr + chipConfig[currentChip].memoryPageSize), " "])
+                if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+            }
+
+            if (config.verifyUploads || (isBootloader && config.verifyBootUploads)) {
+                for (let addr = isBootloader ? startAddress : 0x0; addr < buf.length; addr += chipConfig[currentChip].memoryPageSize) {
+                    let page = addr / chipConfig[currentChip].memoryPageSize
+                    arduino_progressEl.innerText = `${Math.floor(4 + 47 + ((page / numPages) * 47))}%: Verifying page ${page + 1} of ${numPages}`
+
+                    // Convert byte address to word address
+                    let addrLow = (addr / 2) & 0xFF
+                    let addrHigh = ((addr / 2) & 0xFF00) >> 8
+                    let sizeLow = chipConfig[currentChip].memoryPageSize & 0xFF
+                    let sizeHigh = (chipConfig[currentChip].memoryPageSize & 0xFF00) >> 8
+
+                    await comm.write(["U", addrLow, addrHigh, " "])
+                    if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                    if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+
+                    await comm.write(["t", sizeHigh, sizeLow, "F "])
+                    if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                    let buf2 = await comm.readMul(chipConfig[currentChip].memoryPageSize, config.readTimeout)
+                    if (buf2 == null) break commRun
+                    for (let bufAddr = 0; bufAddr < buf2.length; bufAddr++) {
+                        if (buf[addr + bufAddr] != buf2[bufAddr])
+                            { commRunResult = -3; break commRun }
+                    }
+                    if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+                }
+            }
+
+            if (isBootloader) {
+                await comm.write(["V", 0xAC, 0xE0, 0x00, 0xCF, " "]) // Set lock
+                if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                if (await comm.readCode(config.readTimeout) != 0x00) break commRun
+                if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+                if (config.verifyBootUploads) {
+                    await comm.write(["V", 0x58, 0x00, 0x00, 0x00, " "]) // Read lock
+                    if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                    if (await comm.readCode(config.readTimeout) != 0xCF) break commRun
+                    if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+                }
+            }
+
+            arduino_progressEl.innerText = "98%: Starting program"
+            await comm.write("Q ")
+            if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+            if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+        commRunResult = 0 }
+        
+        if (comm != null) comm.emptyReadBuffer()
+        runOnreadHandler = true
+        arduino_progressEl.style.color = "darkgray"
+        arduino_progressEl.innerText = comm == null ? "Warning: Interrupted by disconnect, upload may be corrupted" : ["100%: Success", "Error: Bad communication, please retry", "Error: Invalid chip signature, wrong board", "Error: Bad upload, please retry", "Error: Bad bootloader size, wrong file"][-commRunResult]
+        arduino_chipEl.disabled = false
+        if (comm != null) {
+            arduino_resetBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = inputEl.disabled = false
+            signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = false
+        }
+        log(`<${comm != null && commRunResult == 0 ? "Finished": "Failed to finish"} Arduino${isBootloader ? " bootloader" : ""} upload>`)
+    }
+    arduino_downloadBtn.onclick = async function () {
+        let buf = new Uint8Array(chipConfig[currentChip].memoryTotalSize)
+        let numPages = buf.length / chipConfig[currentChip].memoryPageSize
+
+        log(`<Starting Arduino download of ${buf.length} byte${buf.length != 1 ? "s" : ""}>`)
+        arduino_chipEl.disabled = arduino_resetBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = inputEl.disabled = true
+        signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = true
+        arduino_progressEl.style.color = "lightgray"
+        runOnreadHandler = false
+        comm.emptyReadBuffer()
+        
+        let commRunResult = -1; commRun: for (let _commRun = 0; !_commRun; _commRun++) { // Allow exiting code at any point
+            arduino_progressEl.innerText = "0%: Starting communication"
+            if (arduino_uploadResetEl.checked) {
+                await comm.setSignals({dtr: true, rts: true})
+                await comm.setSignals({dtr: false, rts: false})
+                await new Promise(resolve => setTimeout(resolve, config.bootloaderStartDelay))
+            }
+
+            arduino_progressEl.innerText = "2%: Getting chip signature"
+            await comm.write("0 ")
+            if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+            if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+            await comm.write(["B",
+                ...((new Array(12)).fill(0x00)),
+                (chipConfig[currentChip].memoryPageSize & 0xFF00) >> 8,
+                chipConfig[currentChip].memoryPageSize & 0xFF,
+                ...((new Array(6)).fill(0x00)),
+            " "]) // ArduinoISP doesn't care about (pretty much) any of these options except the page size (because the EEPROM is not being programmed here)
+            if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+            if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+            await comm.write("P ")
+            if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+            if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+            await comm.write("u ")
+            if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+            let [sigHigh, sigMiddle, sigLow] = (await comm.readMul(3, config.readTimeout)) ?? [null, null, null]
+            if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+            if (sigHigh != chipConfig[currentChip].signatureHigh || sigMiddle != chipConfig[currentChip].signatureMiddle || sigLow != chipConfig[currentChip].signatureLow)
+                { commRunResult = -2; break commRun }
+
+            for (let addr = 0x0; addr < buf.length; addr += chipConfig[currentChip].memoryPageSize) {
+                let page = addr / chipConfig[currentChip].memoryPageSize
+                arduino_progressEl.innerText = `${Math.floor(4 + ((page / numPages) * 94))}%: Getting page ${page + 1} of ${numPages}`
+
+                // Convert byte address to word address
+                let addrLow = (addr / 2) & 0xFF
+                let addrHigh = ((addr / 2) & 0xFF00) >> 8
+                let sizeLow = chipConfig[currentChip].memoryPageSize & 0xFF
+                let sizeHigh = (chipConfig[currentChip].memoryPageSize & 0xFF00) >> 8
+
+                await comm.write(["U", addrLow, addrHigh, " "])
+                if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+
+                await comm.write(["t", sizeHigh, sizeLow, "F "])
+                if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                let buf2 = await comm.readMul(chipConfig[currentChip].memoryPageSize, config.readTimeout)
+                if (buf2 == null) break commRun
+                buf.set(buf2, addr)
+                if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+            }
+
+            arduino_progressEl.innerText = "98%: Starting program"
+            await comm.write("Q ")
+            if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+            if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+        commRunResult = 0 }
+        
+        if (comm != null) comm.emptyReadBuffer()
+        runOnreadHandler = true
+        arduino_progressEl.style.color = "darkgray"
+        arduino_progressEl.innerText = comm == null ? "Warning: Interrupted by disconnect, download canceled" : ["100%: Success", "Error: Bad communication, please retry", "Error: Invalid chip signature, wrong board"][-commRunResult]
+        arduino_chipEl.disabled = false
+        if (comm != null) {
+            arduino_resetBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = inputEl.disabled = false
+            signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = false
+        }
+        log(`<${comm != null && commRunResult == 0 ? "Finished": "Failed to finish"} Arduino download>`)
+
+        if (commRunResult == 0) await arduino_makeAndSaveHexFile(buf)
+    }
+
+
+    let debug_runBootComm = false
+    let debug_bootCommands = []
+    async function debug_startBootComm () {
+        if (comm == null || debug_runBootComm) return
+        debug_runBootComm = true
+        
+        log("<(Debug) Starting Arduino bootloader communication>")
+        runOnreadHandler = false
+        comm.emptyReadBuffer()
+
+        await comm.setSignals({dtr: true, rts: true})
+        await comm.setSignals({dtr: false, rts: false})
+        await new Promise(resolve => setTimeout(resolve, config.bootloaderStartDelay))
+
+        async function runBootCommand () {
+            if (debug_bootCommands.length > 0) {
+                try { await (debug_bootCommands.shift())() }
+                catch (er) { console.debug("Error while sending bootloader command to Arduino:", er) }
+            } else {
+                // Sending "Z" doesn't do anything, but bootloaders allow it (and it prevents timing out)
+                await comm.write("Z ")
+                let code1 = await comm.readCode(config.readTimeout)
+                if (code1 == 0x14) {
+                    if (await comm.readCode(config.readTimeout) != 0x10) console.debug("Invalid response while sending heartbeat to Arduino bootloader")
+                } else if (code1 == 0x12) {}
+                else console.debug("Invalid response while sending heartbeat to Arduino bootloader")
+            }
+
+            if (debug_runBootComm) setTimeout(runBootCommand, 250)
+            else {
+                log("<(Debug) Stopping Arduino bootloader communication>")
+                comm.emptyReadBuffer()
+                runOnreadHandler = true
+            }
+        }
+        runBootCommand()
+    }
+    async function debug_stopBootComm () {
+        if (!debug_runBootComm) return
+        debug_runBootComm = false
+    }
+    async function debug_sendBootCommand (func) {
+        if (comm == null || !debug_runBootComm) return
+
+        log("<(Debug) Sending command to Arduino bootloader>")
+        debug_bootCommands.push(func)
+    }
+
+    onerror = function (message, source, lineno, colno, error) {
+        alert(`An internal error has occurred.\nDeveloper information:\n\nGeneric handler.\n\`${message}\`\n${lineno}:${colno}: \`${error}\``)
+    }
+    onunhandledrejection = async function (event) {
+        alert(`An internal error has occurred.\nDeveloper information:\n\nPromise handler.\n\`${event.reason}\`\n\`${event.promise}\``)
     }
 </script>
