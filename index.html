@@ -148,7 +148,7 @@
         <option value="\r\n" selected>CRLF</option>
     </select>
     <label for="autoscrollEl">Autoscroll:</label><input type="checkbox" id="autoscrollEl" checked>
-    | SerialBox Console v3.3 <i><a href="https://github.com/moonlightfox3/serialbox" target="_blank">(GitHub repo here)</a></i>
+    | SerialBox Console v3.4 <i><a href="https://github.com/moonlightfox3/serialbox" target="_blank">(GitHub repo here)</a></i>
     <hr>
 
     Arduino
@@ -776,6 +776,8 @@
                 await comm.write(["d", sizeHigh, sizeLow, "F", ...buf.slice(addr, addr + chipConfig[currentChip].memoryPageSize), " "])
                 if (await comm.readCode(config.readTimeout) != 0x14) break commRun
                 if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+
+                await new Promise(resolve => setTimeout(resolve)) // Just in case
             }
 
             if (config.verifyUploads || (isBootloader && config.verifyBootUploads)) {
