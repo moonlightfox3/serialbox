@@ -148,7 +148,7 @@
         <option value="\r\n" selected>CRLF</option>
     </select>
     <label for="autoscrollEl">Autoscroll:</label><input type="checkbox" id="autoscrollEl" checked>
-    | SerialBox Console v3.3 <i><a href="https://github.com/moonlightfox3/serialbox" target="_blank">(GitHub repo here)</a></i>
+    | SerialBox Console v3.4 <i><a href="https://github.com/moonlightfox3/serialbox" target="_blank">(GitHub repo here)</a></i>
     <hr>
 
     Arduino
@@ -159,9 +159,10 @@
         <option value="nano">Nano</option>
     </select>
     | <button id="arduino_uploadBtn" disabled>Upload program |
-        <label for="arduino_uploadResetEl">Reset board:</label><input type="checkbox" id="arduino_uploadResetEl" checked disabled>
+        <label for="arduino_uploadResetEl">Reset:</label><input type="checkbox" id="arduino_uploadResetEl" checked disabled>
+        <label for="arduino_uploadEraseEl">Erase:</label><input type="checkbox" id="arduino_uploadEraseEl" disabled>
     </button><button id="arduino_downloadBtn" disabled>Download program |
-        <label for="arduino_downloadResetEl">Reset board:</label><input type="checkbox" id="arduino_downloadResetEl" checked disabled>
+        <label for="arduino_downloadResetEl">Reset:</label><input type="checkbox" id="arduino_downloadResetEl" checked disabled>
     </button>
     <span id="arduino_progressEl">&lt;No tasks have been run&gt;</span>
     | Programmer name (<button id="arduino_getNameBtn" disabled>Read</button>): <span id="arduino_nameEl">&lt;None&gt;</span>
@@ -361,7 +362,7 @@
                 connectBtn.innerText = "Disconnect"
                 connectBtn.disabled = false
                 inputEl.disabled = signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = readSignalBtn.disabled = arduino_resetBtn.disabled = arduino_getNameBtn.disabled = false
-                if (arduino_allowArduinoFunctions) arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = false
+                if (arduino_allowArduinoFunctions) arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_uploadEraseEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = false
 
                 let info = comm.getInfo()
                 usbVIdEl.innerText = info.usbVendorId == null ? "<None>" : `0x${info.usbVendorId.toString(16)}`; usbVIdEl.style.color = info.usbVendorId == null ? "darkgray" : "lightgray"
@@ -391,7 +392,7 @@
         log(`<Sending signal${signalNames.length != 1 ? "s" : ""}${+signalEl.value == 0 ? "" : ` for ${+signalEl.value}ms`}: ${signalNames.join(", ")}>`)
 
         signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = arduino_resetBtn.disabled = arduino_getNameBtn.disabled = true
-        arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = true
+        arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_uploadEraseEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = true
 
         let success = await comm.setSignals({dtr: dtrSigEl.checked, rts: rtsSigEl.checked, brk: brkSigEl.checked})
         if (success) {
@@ -401,7 +402,7 @@
 
         if (comm != null) {
             signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = arduino_resetBtn.disabled = arduino_getNameBtn.disabled = false
-            if (arduino_allowArduinoFunctions) arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = false
+            if (arduino_allowArduinoFunctions) arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_uploadEraseEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = false
         }
 
         if (success) {
@@ -505,7 +506,7 @@
             usbVIdEl.style.color = usbPIdEl.style.color = btSvClIdEl.style.color = "darkgray"
 
             inputEl.disabled = signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = readSignalBtn.disabled = arduino_resetBtn.disabled = arduino_getNameBtn.disabled = true
-            arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = true
+            arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_uploadEraseEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = true
             baudRateEl.disabled = dataBitsEl.disabled = parityEl.disabled = stopBitsEl.disabled = flowControlEl.disabled = false
             connectBtn.innerText = "Connect"
             comm = null
@@ -544,7 +545,7 @@
     let arduino_allowArduinoFunctions = false
     arduino_chipEl.onchange = function () {
         currentChip = arduino_chipEl.value
-        if (comm != null && !arduino_allowArduinoFunctions && !signalBtn.disabled) arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = false
+        if (comm != null && !arduino_allowArduinoFunctions && !signalBtn.disabled) arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_uploadEraseEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = false
         arduino_allowArduinoFunctions = true
     }
 
@@ -659,7 +660,7 @@
         let numPages = buf.length / chipConfig[currentChip].memoryPageSize
 
         log(`<Starting Arduino${isBootloader ? " bootloader" : ""} upload of ${buf.length} byte${buf.length != 1 ? "s" : ""}>`)
-        arduino_chipEl.disabled = arduino_resetBtn.disabled = arduino_getNameBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = inputEl.disabled = true
+        arduino_chipEl.disabled = arduino_resetBtn.disabled = arduino_getNameBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_uploadEraseEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = inputEl.disabled = true
         signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = true
         arduino_progressEl.style.color = "lightgray"
         runOnreadHandler = false
@@ -695,14 +696,23 @@
             if (sigHigh != chipConfig[currentChip].signatureHigh || sigMiddle != chipConfig[currentChip].signatureMiddle || sigLow != chipConfig[currentChip].signatureLow)
                 { commRunResult = -2; break commRun }
             
-            if (isBootloader) {
+            if (arduino_uploadEraseEl.checked || isBootloader) {
+                if (!isBootloader) {
+                    await comm.write("1 ")
+                    if (await comm.readCode(config.readTimeout) != 0x14) break commRun
+                    let name = await comm.readStr(7, config.readTimeout)
+                    if (name == null) break commRun
+                    if (await comm.readCode(config.readTimeout) != 0x10) break commRun
+                }
+                
                 await comm.write(["V", 0xAC, 0x80, 0x00, 0x00, " "]) // Chip erase
                 if (await comm.readCode(config.readTimeout) != 0x14) break commRun
                 if (await comm.readCode(config.readTimeout) != 0x00)
                     { commRunResult = -3; break commRun }
                 if (await comm.readCode(config.readTimeout) != 0x10) break commRun
                 // Can't really verify a chip erase here. At least, it's not worth it
-                
+            }
+            if (isBootloader) {
                 await comm.write(["V", 0xAC, 0xE0, 0x00, 0xFF, " "]) // Set lock
                 if (await comm.readCode(config.readTimeout) != 0x14) break commRun
                 if (await comm.readCode(config.readTimeout) != 0x00)
@@ -832,7 +842,7 @@
         arduino_progressEl.innerText = comm == null ? "Warning: Interrupted by disconnect, upload may be corrupted" : ["100%: Success", "Error: Bad communication, please retry", "Error: Invalid chip signature, wrong board", "Error: Bad upload, please retry", "Error: Bad bootloader size, wrong file"][-commRunResult]
         arduino_chipEl.disabled = false
         if (comm != null) {
-            arduino_resetBtn.disabled = arduino_getNameBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = inputEl.disabled = false
+            arduino_resetBtn.disabled = arduino_getNameBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_uploadEraseEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = inputEl.disabled = false
             signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = false
         }
         log(`<${comm != null && commRunResult == 0 ? "Finished": "Failed to finish"} Arduino${isBootloader ? " bootloader" : ""} upload>`)
@@ -843,7 +853,7 @@
         let numPages = buf.length / chipConfig[currentChip].memoryPageSize
 
         log(`<Starting Arduino download of ${buf.length} byte${buf.length != 1 ? "s" : ""}>`)
-        arduino_chipEl.disabled = arduino_resetBtn.disabled = arduino_getNameBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = inputEl.disabled = true
+        arduino_chipEl.disabled = arduino_resetBtn.disabled = arduino_getNameBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_uploadEraseEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = inputEl.disabled = true
         signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = true
         arduino_progressEl.style.color = "lightgray"
         runOnreadHandler = false
@@ -913,7 +923,7 @@
         arduino_progressEl.innerText = comm == null ? "Warning: Interrupted by disconnect, download canceled" : ["100%: Success", "Error: Bad communication, please retry", "Error: Invalid chip signature, wrong board"][-commRunResult]
         arduino_chipEl.disabled = false
         if (comm != null) {
-            arduino_resetBtn.disabled = arduino_getNameBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = inputEl.disabled = false
+            arduino_resetBtn.disabled = arduino_getNameBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_uploadEraseEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = inputEl.disabled = false
             signalBtn.disabled = signalEl.disabled = dtrSigEl.disabled = rtsSigEl.disabled = brkSigEl.disabled = false
         }
         log(`<${comm != null && commRunResult == 0 ? "Finished": "Failed to finish"} Arduino download>`)
@@ -933,6 +943,7 @@
         if (success) {
             name = await comm.readStr(7, config.readTimeout)
             if (name != null) success = await comm.readCode(config.readTimeout) == 0x10
+            else success = false
         }
 
         if (success) {
