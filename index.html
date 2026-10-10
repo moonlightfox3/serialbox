@@ -148,7 +148,7 @@
         <option value="\r\n" selected>CRLF</option>
     </select>
     <label for="autoscrollEl">Autoscroll:</label><input type="checkbox" id="autoscrollEl" checked>
-    | SerialBox Console v3.5 <i><a href="https://github.com/moonlightfox3/serialbox" target="_blank">(GitHub repo here)</a></i>
+    | SerialBox Console v3.6 <i><a href="https://github.com/moonlightfox3/serialbox" target="_blank">(GitHub repo here)</a></i>
     <hr>
 
     Arduino
@@ -171,9 +171,9 @@
 <input id="inputEl" placeholder="Type a message here and click Enter to send..." disabled>
 
 <script>
-    // These chip config options are important and should be correct!
-    let currentChip = "" // Automatically chosen from the list of the keys of the chipConfig object.
-    let chipConfig = { // Lock and fuse bytes are currently hardcoded. Look at those, and see if any changes need to be made, before adding more boards here.
+    // These Arduino chip config options are important and should be correct!
+    let arduino_currentChip = "" // Automatically chosen from the list of the keys of the arduino_chipConfig object.
+    let arduino_chipConfig = { // Lock and fuse bytes are currently hardcoded. Look at those, and see if any changes need to be made, before adding more boards here.
         uno: { // Arduino UNO with ATmega328P
             memoryTotalSize : 0x8000,
             memoryPageSize  : 0x80,
@@ -192,12 +192,15 @@
         },
     }
 
-    // More config options. These can be customized to your liking.
+    // Config options. These can be customized to your liking.
     let config = {
-        verifyUploads        : false, // Verify uploaded code after uploading, can approximately double upload time. Default disabled
-        verifyBootUploads    : true,  // Verify uploaded bootloader, locks, and fuses. Recommended to be enabled
-        readTimeout          : 1500,  // Milliseconds to wait before one serial read times out. Default 1500
-        bootloaderStartDelay : 100,   // Milliseconds to wait after resetting, when using the bootloader. Default 100
+        readTimeout          : 1500,      // Milliseconds to wait before one serial read times out. Default 1500
+
+        arduino: {                        // Settings for Arduino chips.
+            verifyUploads        : false, // Verify uploaded code after uploading, can approximately double upload time. Default disabled
+            verifyBootUploads    : true,  // Verify uploaded bootloader, locks, and fuses. Recommended to be enabled
+            bootloaderStartDelay : 100,   // Milliseconds to wait after resetting, when using the bootloader. Default 100
+        }
     }
 
 
@@ -544,7 +547,7 @@
     }
     let arduino_allowArduinoFunctions = false
     arduino_chipEl.onchange = function () {
-        currentChip = arduino_chipEl.value
+        arduino_currentChip = arduino_chipEl.value
         if (comm != null && !arduino_allowArduinoFunctions && !signalBtn.disabled) arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_uploadEraseEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = false
         arduino_allowArduinoFunctions = true
     }
@@ -608,12 +611,12 @@
         for (let i = 0; i < buf.length; i++) { // Empty values can maybe sometimes exist due to address jumps
             if (buf[i] == undefined) buf[i] = 0xFF
         }
-        let numPads = chipConfig[currentChip].memoryPageSize - (buf.length % chipConfig[currentChip].memoryPageSize) // Make sure the data is page-aligned
-        if (numPads < chipConfig[currentChip].memoryPageSize) {
+        let numPads = arduino_chipConfig[arduino_currentChip].memoryPageSize - (buf.length % arduino_chipConfig[arduino_currentChip].memoryPageSize) // Make sure the data is page-aligned
+        if (numPads < arduino_chipConfig[arduino_currentChip].memoryPageSize) {
             for (let i = 0; i < numPads; i++) buf.push(0xFF)
         }
         
-        let bootloaderSize = startAddress == null ? null : (chipConfig[currentChip].memoryTotalSize - startAddress)
+        let bootloaderSize = startAddress == null ? null : (arduino_chipConfig[arduino_currentChip].memoryTotalSize - startAddress)
         return {
             buf: new Uint8Array(buf),
             startAddress,
@@ -648,16 +651,16 @@
         let {buf, startAddress, bootloaderSize} = await arduino_getAndParseHexFile()
         if (buf == undefined) return
         let isBootloader = startAddress != null && bootloaderSize != null
-        let maxSize = chipConfig[currentChip].memoryTotalSize - chipConfig[currentChip].bootloaderSize
+        let maxSize = arduino_chipConfig[arduino_currentChip].memoryTotalSize - arduino_chipConfig[arduino_currentChip].bootloaderSize
         if (buf.length > maxSize && !isBootloader) {
             arduino_progressEl.innerText = `Error: File too big! (${buf.length} byte${buf.length != 1 ? "s" : ""} > ${maxSize} byte${maxSize != 1 ? "s" : ""})`
             return
         }
-        if (buf.length != chipConfig[currentChip].memoryTotalSize && isBootloader) {
-            arduino_progressEl.innerText = `Error: Bootloader file is the wrong size! (${buf.length} byte${buf.length != 1 ? "s" : ""} != ${chipConfig[currentChip].memoryTotalSize} byte${chipConfig[currentChip].memoryTotalSize != 1 ? "s" : ""})`
+        if (buf.length != arduino_chipConfig[arduino_currentChip].memoryTotalSize && isBootloader) {
+            arduino_progressEl.innerText = `Error: Bootloader file is the wrong size! (${buf.length} byte${buf.length != 1 ? "s" : ""} != ${arduino_chipConfig[arduino_currentChip].memoryTotalSize} byte${arduino_chipConfig[arduino_currentChip].memoryTotalSize != 1 ? "s" : ""})`
             return
         }
-        let numPages = buf.length / chipConfig[currentChip].memoryPageSize
+        let numPages = buf.length / arduino_chipConfig[arduino_currentChip].memoryPageSize
 
         log(`<Starting Arduino${isBootloader ? " bootloader" : ""} upload of ${buf.length} byte${buf.length != 1 ? "s" : ""}>`)
         arduino_chipEl.disabled = arduino_resetBtn.disabled = arduino_getNameBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_uploadEraseEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = inputEl.disabled = true
@@ -671,7 +674,7 @@
             if (arduino_uploadResetEl.checked) {
                 if (!(await comm.setSignals({dtr: true, rts: true}))) break commRun
                 if (!(await comm.setSignals({dtr: false, rts: false}))) break commRun
-                await new Promise(resolve => setTimeout(resolve, config.bootloaderStartDelay))
+                await new Promise(resolve => setTimeout(resolve, config.arduino.bootloaderStartDelay))
             }
 
             arduino_progressEl.innerText = "2%: Getting chip signature"
@@ -680,8 +683,8 @@
             if (await comm.readCode(config.readTimeout) != 0x10) break commRun
             await comm.write(["B",
                 ...((new Array(12)).fill(0x00)),
-                (chipConfig[currentChip].memoryPageSize & 0xFF00) >> 8,
-                chipConfig[currentChip].memoryPageSize & 0xFF,
+                (arduino_chipConfig[arduino_currentChip].memoryPageSize & 0xFF00) >> 8,
+                arduino_chipConfig[arduino_currentChip].memoryPageSize & 0xFF,
                 ...((new Array(6)).fill(0x00)),
             " "]) // ArduinoISP doesn't care about (pretty much) any of these options except the page size (because the EEPROM is not being programmed here)
             if (await comm.readCode(config.readTimeout) != 0x14) break commRun
@@ -693,7 +696,7 @@
             if (await comm.readCode(config.readTimeout) != 0x14) break commRun
             let [sigHigh, sigMiddle, sigLow] = (await comm.readMul(3, config.readTimeout)) ?? [null, null, null]
             if (await comm.readCode(config.readTimeout) != 0x10) break commRun
-            if (sigHigh != chipConfig[currentChip].signatureHigh || sigMiddle != chipConfig[currentChip].signatureMiddle || sigLow != chipConfig[currentChip].signatureLow)
+            if (sigHigh != arduino_chipConfig[arduino_currentChip].signatureHigh || sigMiddle != arduino_chipConfig[arduino_currentChip].signatureMiddle || sigLow != arduino_chipConfig[arduino_currentChip].signatureLow)
                 { commRunResult = -2; break commRun }
             
             if (arduino_uploadEraseEl.checked || isBootloader) {
@@ -718,7 +721,7 @@
                 if (await comm.readCode(config.readTimeout) != 0x00)
                     { commRunResult = -3; break commRun }
                 if (await comm.readCode(config.readTimeout) != 0x10) break commRun
-                if (config.verifyBootUploads) {
+                if (config.arduino.verifyBootUploads) {
                     await comm.write(["V", 0x58, 0x00, 0x00, 0x00, " "]) // Read lock
                     if (await comm.readCode(config.readTimeout) != 0x14) break commRun
                     if (await comm.readCode(config.readTimeout) != 0xFF)
@@ -731,7 +734,7 @@
                 if (await comm.readCode(config.readTimeout) != 0x00)
                     { commRunResult = -3; break commRun }
                 if (await comm.readCode(config.readTimeout) != 0x10) break commRun
-                if (config.verifyBootUploads) {
+                if (config.arduino.verifyBootUploads) {
                     await comm.write(["V", 0x50, 0x08, 0x00, 0x00, " "]) // Read extended fuse
                     if (await comm.readCode(config.readTimeout) != 0x14) break commRun
                     if (await comm.readCode(config.readTimeout) != 0xFD)
@@ -747,7 +750,7 @@
                 if (await comm.readCode(config.readTimeout) != 0x00)
                     { commRunResult = -3; break commRun }
                 if (await comm.readCode(config.readTimeout) != 0x10) break commRun
-                if (config.verifyBootUploads) {
+                if (config.arduino.verifyBootUploads) {
                     await comm.write(["V", 0x58, 0x08, 0x00, 0x00, " "]) // Read high fuse
                     if (await comm.readCode(config.readTimeout) != 0x14) break commRun
                     if (await comm.readCode(config.readTimeout) != 0xD8 + bootsz)
@@ -760,7 +763,7 @@
                 if (await comm.readCode(config.readTimeout) != 0x00)
                     { commRunResult = -3; break commRun }
                 if (await comm.readCode(config.readTimeout) != 0x10) break commRun
-                if (config.verifyBootUploads) {
+                if (config.arduino.verifyBootUploads) {
                     await comm.write(["V", 0x50, 0x00, 0x00, 0x00, " "]) // Read low fuse
                     if (await comm.readCode(config.readTimeout) != 0x14) break commRun
                     if (await comm.readCode(config.readTimeout) != 0xFF)
@@ -769,35 +772,35 @@
                 }
             }
 
-            for (let addr = isBootloader ? startAddress : 0x0; addr < buf.length; addr += chipConfig[currentChip].memoryPageSize) {
-                let page = addr / chipConfig[currentChip].memoryPageSize
-                arduino_progressEl.innerText = `${Math.floor(4 + ((page / numPages) * (config.verifyUploads ? 47 : 94)))}%: Programming page ${page + 1} of ${numPages}`
+            for (let addr = isBootloader ? startAddress : 0x0; addr < buf.length; addr += arduino_chipConfig[arduino_currentChip].memoryPageSize) {
+                let page = addr / arduino_chipConfig[arduino_currentChip].memoryPageSize
+                arduino_progressEl.innerText = `${Math.floor(4 + ((page / numPages) * (config.arduino.verifyUploads ? 47 : 94)))}%: Programming page ${page + 1} of ${numPages}`
 
                 // Convert byte address to word address
                 let addrLow = (addr / 2) & 0xFF
                 let addrHigh = ((addr / 2) & 0xFF00) >> 8
-                let sizeLow = chipConfig[currentChip].memoryPageSize & 0xFF
-                let sizeHigh = (chipConfig[currentChip].memoryPageSize & 0xFF00) >> 8
+                let sizeLow = arduino_chipConfig[arduino_currentChip].memoryPageSize & 0xFF
+                let sizeHigh = (arduino_chipConfig[arduino_currentChip].memoryPageSize & 0xFF00) >> 8
 
                 await comm.write(["U", addrLow, addrHigh, " "])
                 if (await comm.readCode(config.readTimeout) != 0x14) break commRun
                 if (await comm.readCode(config.readTimeout) != 0x10) break commRun
                 
-                await comm.write(["d", sizeHigh, sizeLow, "F", ...buf.slice(addr, addr + chipConfig[currentChip].memoryPageSize), " "])
+                await comm.write(["d", sizeHigh, sizeLow, "F", ...buf.slice(addr, addr + arduino_chipConfig[arduino_currentChip].memoryPageSize), " "])
                 if (await comm.readCode(config.readTimeout) != 0x14) break commRun
                 if (await comm.readCode(config.readTimeout) != 0x10) break commRun
             }
 
-            if (config.verifyUploads || (isBootloader && config.verifyBootUploads)) {
-                for (let addr = isBootloader ? startAddress : 0x0; addr < buf.length; addr += chipConfig[currentChip].memoryPageSize) {
-                    let page = addr / chipConfig[currentChip].memoryPageSize
+            if (config.arduino.verifyUploads || (isBootloader && config.arduino.verifyBootUploads)) {
+                for (let addr = isBootloader ? startAddress : 0x0; addr < buf.length; addr += arduino_chipConfig[arduino_currentChip].memoryPageSize) {
+                    let page = addr / arduino_chipConfig[arduino_currentChip].memoryPageSize
                     arduino_progressEl.innerText = `${Math.floor(4 + 47 + ((page / numPages) * 47))}%: Verifying page ${page + 1} of ${numPages}`
 
                     // Convert byte address to word address
                     let addrLow = (addr / 2) & 0xFF
                     let addrHigh = ((addr / 2) & 0xFF00) >> 8
-                    let sizeLow = chipConfig[currentChip].memoryPageSize & 0xFF
-                    let sizeHigh = (chipConfig[currentChip].memoryPageSize & 0xFF00) >> 8
+                    let sizeLow = arduino_chipConfig[arduino_currentChip].memoryPageSize & 0xFF
+                    let sizeHigh = (arduino_chipConfig[arduino_currentChip].memoryPageSize & 0xFF00) >> 8
 
                     await comm.write(["U", addrLow, addrHigh, " "])
                     if (await comm.readCode(config.readTimeout) != 0x14) break commRun
@@ -805,7 +808,7 @@
 
                     await comm.write(["t", sizeHigh, sizeLow, "F "])
                     if (await comm.readCode(config.readTimeout) != 0x14) break commRun
-                    let buf2 = await comm.readMul(chipConfig[currentChip].memoryPageSize, config.readTimeout)
+                    let buf2 = await comm.readMul(arduino_chipConfig[arduino_currentChip].memoryPageSize, config.readTimeout)
                     if (buf2 == null) break commRun
                     for (let bufAddr = 0; bufAddr < buf2.length; bufAddr++) {
                         if (buf[addr + bufAddr] != buf2[bufAddr])
@@ -821,7 +824,7 @@
                 if (await comm.readCode(config.readTimeout) != 0x00)
                     { commRunResult = -3; break commRun }
                 if (await comm.readCode(config.readTimeout) != 0x10) break commRun
-                if (config.verifyBootUploads) {
+                if (config.arduino.verifyBootUploads) {
                     await comm.write(["V", 0x58, 0x00, 0x00, 0x00, " "]) // Read lock
                     if (await comm.readCode(config.readTimeout) != 0x14) break commRun
                     if (await comm.readCode(config.readTimeout) != 0xCF)
@@ -849,8 +852,8 @@
     }
     for (let child of arduino_downloadBtn.children) child.onclick = ev => ev.stopPropagation()
     arduino_downloadBtn.onclick = async function () {
-        let buf = new Uint8Array(chipConfig[currentChip].memoryTotalSize)
-        let numPages = buf.length / chipConfig[currentChip].memoryPageSize
+        let buf = new Uint8Array(arduino_chipConfig[arduino_currentChip].memoryTotalSize)
+        let numPages = buf.length / arduino_chipConfig[arduino_currentChip].memoryPageSize
 
         log(`<Starting Arduino download of ${buf.length} byte${buf.length != 1 ? "s" : ""}>`)
         arduino_chipEl.disabled = arduino_resetBtn.disabled = arduino_getNameBtn.disabled = arduino_uploadBtn.disabled = arduino_uploadResetEl.disabled = arduino_uploadEraseEl.disabled = arduino_downloadBtn.disabled = arduino_downloadResetEl.disabled = inputEl.disabled = true
@@ -864,7 +867,7 @@
             if (arduino_downloadResetEl.checked) {
                 if (!(await comm.setSignals({dtr: true, rts: true}))) break commRun
                 if (!(await comm.setSignals({dtr: false, rts: false}))) break commRun
-                await new Promise(resolve => setTimeout(resolve, config.bootloaderStartDelay))
+                await new Promise(resolve => setTimeout(resolve, config.arduino.bootloaderStartDelay))
             }
 
             arduino_progressEl.innerText = "2%: Getting chip signature"
@@ -873,8 +876,8 @@
             if (await comm.readCode(config.readTimeout) != 0x10) break commRun
             await comm.write(["B",
                 ...((new Array(12)).fill(0x00)),
-                (chipConfig[currentChip].memoryPageSize & 0xFF00) >> 8,
-                chipConfig[currentChip].memoryPageSize & 0xFF,
+                (arduino_chipConfig[arduino_currentChip].memoryPageSize & 0xFF00) >> 8,
+                arduino_chipConfig[arduino_currentChip].memoryPageSize & 0xFF,
                 ...((new Array(6)).fill(0x00)),
             " "]) // ArduinoISP doesn't care about (pretty much) any of these options except the page size (because the EEPROM is not being programmed here)
             if (await comm.readCode(config.readTimeout) != 0x14) break commRun
@@ -886,18 +889,18 @@
             if (await comm.readCode(config.readTimeout) != 0x14) break commRun
             let [sigHigh, sigMiddle, sigLow] = (await comm.readMul(3, config.readTimeout)) ?? [null, null, null]
             if (await comm.readCode(config.readTimeout) != 0x10) break commRun
-            if (sigHigh != chipConfig[currentChip].signatureHigh || sigMiddle != chipConfig[currentChip].signatureMiddle || sigLow != chipConfig[currentChip].signatureLow)
+            if (sigHigh != arduino_chipConfig[arduino_currentChip].signatureHigh || sigMiddle != arduino_chipConfig[arduino_currentChip].signatureMiddle || sigLow != arduino_chipConfig[arduino_currentChip].signatureLow)
                 { commRunResult = -2; break commRun }
 
-            for (let addr = 0x0; addr < buf.length; addr += chipConfig[currentChip].memoryPageSize) {
-                let page = addr / chipConfig[currentChip].memoryPageSize
+            for (let addr = 0x0; addr < buf.length; addr += arduino_chipConfig[arduino_currentChip].memoryPageSize) {
+                let page = addr / arduino_chipConfig[arduino_currentChip].memoryPageSize
                 arduino_progressEl.innerText = `${Math.floor(4 + ((page / numPages) * 94))}%: Getting page ${page + 1} of ${numPages}`
 
                 // Convert byte address to word address
                 let addrLow = (addr / 2) & 0xFF
                 let addrHigh = ((addr / 2) & 0xFF00) >> 8
-                let sizeLow = chipConfig[currentChip].memoryPageSize & 0xFF
-                let sizeHigh = (chipConfig[currentChip].memoryPageSize & 0xFF00) >> 8
+                let sizeLow = arduino_chipConfig[arduino_currentChip].memoryPageSize & 0xFF
+                let sizeHigh = (arduino_chipConfig[arduino_currentChip].memoryPageSize & 0xFF00) >> 8
 
                 await comm.write(["U", addrLow, addrHigh, " "])
                 if (await comm.readCode(config.readTimeout) != 0x14) break commRun
@@ -905,7 +908,7 @@
 
                 await comm.write(["t", sizeHigh, sizeLow, "F "])
                 if (await comm.readCode(config.readTimeout) != 0x14) break commRun
-                let buf2 = await comm.readMul(chipConfig[currentChip].memoryPageSize, config.readTimeout)
+                let buf2 = await comm.readMul(arduino_chipConfig[arduino_currentChip].memoryPageSize, config.readTimeout)
                 if (buf2 == null) break commRun
                 buf.set(buf2, addr)
                 if (await comm.readCode(config.readTimeout) != 0x10) break commRun
@@ -974,7 +977,7 @@
         let success = await comm.setSignals({dtr: true, rts: true})
         if (success) {
             success = await comm.setSignals({dtr: false, rts: false})
-            if (success) await new Promise(resolve => setTimeout(resolve, config.bootloaderStartDelay))
+            if (success) await new Promise(resolve => setTimeout(resolve, config.arduino.bootloaderStartDelay))
         }
         if (!success) {
             log(`<(Debug) Failed to start Arduino bootloader communication>`)
