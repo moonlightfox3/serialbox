@@ -63,6 +63,7 @@
 
     button, input:not(#inputEl), select {
         background-color: lightgray;
+        color: black;
         border-radius: 5px;
     }
     button[disabled], input[disabled], select[disabled] {
@@ -352,12 +353,12 @@
             comm = await connectSerial(() => onread(), () => ondisconnect(), +baudRateEl.value, +dataBitsEl.value, parityEl.value, +stopBitsEl.value, flowControlEl.value)
 
             if (comm === undefined) {
-                log("<Error connecting to device. No serial port was selected, or the use of serial ports is disabled for this webpage>")
+                log("<Error connecting to device. No serial port was selected, the use of serial ports is disabled for this webpage, your browser does not allow webpages to use serial ports, or your device does not support serial ports.>")
                 baudRateEl.disabled = dataBitsEl.disabled = parityEl.disabled = stopBitsEl.disabled = flowControlEl.disabled = false
                 connectBtn.innerText = "Connect"
                 connectBtn.disabled = false
             } else if (comm === null) {
-                log("<Error connecting to device. The serial port is busy, and already in use by another program>")
+                log("<Error connecting to device. The serial port is busy, or already in use by another program>")
                 baudRateEl.disabled = dataBitsEl.disabled = parityEl.disabled = stopBitsEl.disabled = flowControlEl.disabled = false
                 connectBtn.innerText = "Connect"
                 connectBtn.disabled = false
@@ -481,7 +482,7 @@
         }, 20)
     }
     onkeydown = function (ev) {
-        if (ev.key == "Tab") {
+        if (ev.key == "Tab" && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
             ev.preventDefault()
             if (document.activeElement == inputEl) {
                 let origStart = inputEl.selectionStart
